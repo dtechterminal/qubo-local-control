@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "QUBO Local Control Setup",
+        "description": "Enter the device information to set up local control for your QUBO Smart Plug.",
+        "data": {
+          "device_uuid": "Device UUID",
+          "entity_uuid": "Entity UUID",
+          "unit_uuid": "Unit UUID",
+          "handle_name": "Handle Name",
+          "device_name": "Device Name",
+          "device_mac": "Device MAC Address (Optional)"
+        },
+        "data_description": {
+          "device_uuid": "The unique identifier for your QUBO device",
+          "entity_uuid": "The entity UUID from MQTT messages",
+          "unit_uuid": "The unit UUID from MQTT messages",
+          "handle_name": "The handle name (usually userUUID)",
+          "device_name": "A friendly name for your device",
+          "device_mac": "The MAC address of your device (optional)"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "This device is already configured"
+    },
+    "abort": {
+      "already_configured": "This device is already configured"
+    }
+  }
+}
