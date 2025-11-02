@@ -1,0 +1,6 @@
+{
+  "name": "QUBO Local Control",
+  "render_readme": true,
+  "domains": ["qubo_local"],
+  "homeassistant": "2023.1.0"
+}
