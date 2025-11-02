@@ -13,8 +13,38 @@ Home Assistant custom integration for local control of QUBO Smart Plugs via MQTT
 ## Requirements
 
 - Home Assistant with MQTT integration configured
-- Local MQTT broker (e.g., Mosquitto)
-- QUBO Smart Plug configured to use local MQTT broker
+- Local MQTT broker (e.g., Mosquitto) with TLS/SSL support
+- Router or DNS server with custom DNS entry support
+- QUBO Smart Plug
+
+## Setup Local MQTT Redirect
+
+To enable local control, you need to redirect the QUBO device's cloud MQTT connection to your local broker:
+
+### DNS Redirect Method (Recommended)
+
+Configure your router or DNS server to resolve `mqtt.platform.quboworld.com` to your local MQTT broker's IP address.
+
+**Steps:**
+1. Access your router's DNS settings (or Pi-hole, AdGuard Home, etc.)
+2. Add a custom DNS entry:
+   - **Hostname:** `mqtt.platform.quboworld.com`
+   - **IP Address:** Your local MQTT broker IP (e.g., `192.168.1.68`)
+3. Save the DNS configuration
+4. Power cycle your QUBO device:
+   - Unplug the device from power
+   - Wait 10 seconds
+   - Plug it back in
+5. The device will now connect to your local broker instead of the cloud
+
+**Verify Connection:**
+```bash
+# Monitor for device heartbeat on your local broker
+mosquitto_sub -h YOUR_MQTT_BROKER -p 1883 -u USERNAME -P PASSWORD \
+  -t '/monitor/+/+/heartbeat' -v
+```
+
+You should see heartbeat messages from your device within a minute of power cycling.
 
 ## Installation
 
