@@ -4,6 +4,7 @@ Home Assistant custom integration for local control of QUBO Smart Plugs via MQTT
 
 ## Features
 
+- **Automatic Device Discovery** - Automatically detects QUBO devices on your network via MQTT
 - **100% Local Control** - No cloud dependency, complete privacy
 - **Real-time Switch Control** - Turn devices on/off instantly
 - **Energy Monitoring** - Track power consumption, voltage, current, and total energy
@@ -70,27 +71,30 @@ rm -rf qubo-local-control
 
 ## Configuration
 
-### Step 1: Gather Device Information
+### Automatic Discovery (Recommended)
 
-You'll need the following UUIDs from your QUBO device. You can find these by monitoring MQTT messages from your device:
+The integration can automatically discover QUBO devices on your network by listening to MQTT heartbeat messages.
 
-- **Device UUID** - Unique identifier for your QUBO device
-- **Entity UUID** - Entity identifier from MQTT messages
-- **Unit UUID** - Unit identifier from MQTT messages
-- **Handle Name** - Usually your userUUID
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search for "QUBO Local Control"
+4. Select **Automatic Discovery (Recommended)**
+5. Wait up to 30 seconds for device discovery
+6. Select your device from the dropdown
+7. Click **Submit**
 
-### Step 2: Find Your Device UUIDs
+The integration will automatically extract all required information (UUIDs, MAC address) from the device's MQTT messages.
 
-Subscribe to all MQTT topics to see your device information:
+### Manual Configuration
+
+If automatic discovery doesn't work, you can manually configure the integration:
+
+#### Step 1: Find Your Device UUIDs
+
+Subscribe to MQTT heartbeat topic to see your device information:
 
 ```bash
-mosquitto_sub -h YOUR_MQTT_BROKER -p 1883 -u USERNAME -P PASSWORD -t '#' -v
-```
-
-Look for messages on topics like:
-```
-/monitor/{unit_uuid}/{device_uuid}/lcSwitchControl
-/monitor/{unit_uuid}/{device_uuid}/plugMetering
+mosquitto_sub -h YOUR_MQTT_BROKER -p 1883 -u USERNAME -P PASSWORD -t '/monitor/+/+/heartbeat' -v
 ```
 
 The JSON payload will contain:
@@ -100,25 +104,26 @@ The JSON payload will contain:
     "deviceUUID": "your-device-uuid",
     "entityUUID": "your-entity-uuid",
     "unitUUID": "your-unit-uuid",
-    "userUUID": "your-user-uuid"
+    "userUUID": "your-user-uuid",
+    "srcDeviceId": "HSP_CC:8D:A2:DC:F3:BC"
   }
 }
 ```
 
-### Step 3: Add Integration in Home Assistant
+#### Step 2: Add Integration in Home Assistant
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
 3. Search for "QUBO Local Control"
-4. Enter the device information:
+4. Select **Manual Configuration**
+5. Enter the device information:
    - Device UUID
    - Entity UUID
    - Unit UUID
    - Handle Name (userUUID)
    - Device Name (optional, friendly name)
    - Device MAC Address (optional)
-
-5. Click **Submit**
+6. Click **Submit**
 
 ## Entities Created
 

@@ -3,6 +3,21 @@
     "step": {
       "user": {
         "title": "QUBO Local Control Setup",
+        "description": "Choose how to add your QUBO Smart Plug.",
+        "menu_options": {
+          "mqtt_discovery": "Automatic Discovery (Recommended)",
+          "manual": "Manual Configuration"
+        }
+      },
+      "mqtt_discovery": {
+        "title": "Discover QUBO Devices",
+        "description": "Listening for QUBO devices on MQTT... This will take up to 30 seconds. Found {device_count} device(s).",
+        "data": {
+          "device": "Select Device"
+        }
+      },
+      "manual": {
+        "title": "Manual QUBO Configuration",
         "description": "Enter the device information to set up local control for your QUBO Smart Plug.",
         "data": {
           "device_uuid": "Device UUID",
@@ -23,7 +38,9 @@
       }
     },
     "error": {
-      "already_configured": "This device is already configured"
+      "already_configured": "This device is already configured",
+      "discovery_failed": "Failed to discover devices via MQTT",
+      "no_devices_found": "No QUBO devices found. Make sure your devices are connected and sending heartbeat messages."
     },
     "abort": {
       "already_configured": "This device is already configured"
