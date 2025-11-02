@@ -24,7 +24,7 @@ Home Assistant custom integration for local control of QUBO Smart Plugs via MQTT
    ```bash
    cd /path/to/homeassistant/config
    mkdir -p custom_components
-   cp -r /path/to/iot-local-control/custom_components/qubo_local custom_components/
+   cp -r /path/to/qubo-local-control/custom_components/qubo_local custom_components/
    ```
 
 2. Restart Home Assistant
@@ -33,9 +33,9 @@ Home Assistant custom integration for local control of QUBO Smart Plugs via MQTT
 
 ```bash
 cd /path/to/homeassistant/config/custom_components
-git clone https://github.com/dtechterminal/iot-local-control.git
-mv iot-local-control/custom_components/qubo_local .
-rm -rf iot-local-control
+git clone https://github.com/dtechterminal/qubo-local-control.git
+mv qubo-local-control/custom_components/qubo_local .
+rm -rf qubo-local-control
 ```
 
 ## Configuration
@@ -223,4 +223,4 @@ Developed by [@dtechterminal](https://github.com/dtechterminal)
 
 ## Support
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/dtechterminal/iot-local-control/issues).
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/dtechterminal/qubo-local-control/issues).
