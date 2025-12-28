@@ -181,13 +181,12 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 if power_state is not None:
                     self._attr_is_on = power_state.lower() == "on"
                     if self._attr_is_on:
-                        # Set percentage based on current speed when turning on
-                        if self._attr_percentage == 0:
-                            self._attr_percentage = ordered_list_item_to_percentage(
-                                ORDERED_NAMED_FAN_SPEEDS, self._current_speed
-                            )
+                        # Always set percentage based on current speed when on
+                        self._attr_percentage = ordered_list_item_to_percentage(
+                            ORDERED_NAMED_FAN_SPEEDS, self._current_speed
+                        )
                     else:
-                        # Xiaomi-Miot pattern: 0% when off
+                        # 0% when off
                         self._attr_percentage = 0
                     self.async_write_ha_state()
                     _LOGGER.debug("Purifier power state: %s, percentage: %s", self._attr_is_on, self._attr_percentage)
@@ -209,13 +208,13 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
 
                 if speed is not None:
                     self._current_speed = speed
-                    # Only update percentage if on (Xiaomi-Miot pattern)
+                    # Always update percentage based on speed when on
                     if self._attr_is_on:
                         self._attr_percentage = ordered_list_item_to_percentage(
                             ORDERED_NAMED_FAN_SPEEDS, speed
                         )
-                        self.async_write_ha_state()
-                    _LOGGER.debug("Purifier speed: %s (is_on=%s)", speed, self._attr_is_on)
+                    self.async_write_ha_state()
+                    _LOGGER.debug("Purifier speed: %s, percentage: %s", speed, self._attr_percentage)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing speed: %s", err)
