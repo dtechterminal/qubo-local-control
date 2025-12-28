@@ -276,8 +276,8 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 time_remaining = state_changed.get("timeRemaining")
 
                 if time_remaining is not None:
-                    # Convert minutes to hours
-                    self._filter_life_remaining = round(int(time_remaining) / 60, 1)
+                    # Value is already in hours
+                    self._filter_life_remaining = int(time_remaining)
                     self.async_write_ha_state()
                     _LOGGER.debug("Filter life: %s hours", self._filter_life_remaining)
 

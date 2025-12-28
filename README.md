@@ -366,7 +366,7 @@ Mode values: `auto`, `manual`
   }
 }
 ```
-`timeRemaining` is in minutes.
+`timeRemaining` is in hours.
 
 ## License
 

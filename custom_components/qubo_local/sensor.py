@@ -344,11 +344,10 @@ class QuboFilterSensor(SensorEntity):
                 time_remaining = state_changed.get("timeRemaining")
 
                 if time_remaining is not None:
-                    # Convert minutes to hours
-                    hours = round(int(time_remaining) / 60, 1)
-                    self._attr_native_value = hours
+                    # Value is already in hours
+                    self._attr_native_value = int(time_remaining)
                     self.async_write_ha_state()
-                    _LOGGER.debug("Filter life updated to: %s hours", hours)
+                    _LOGGER.debug("Filter life updated to: %s hours", self._attr_native_value)
 
             except (json.JSONDecodeError, KeyError, ValueError) as err:
                 _LOGGER.error("Error processing filter data: %s", err)
