@@ -161,6 +161,21 @@ The JSON payload will contain:
 | PM2.5 | `sensor` | Air quality reading (µg/m³) |
 | Filter Life | `sensor` | Remaining filter life (hours) |
 
+#### Fan Entity Attributes
+
+The fan entity exposes additional attributes for dashboard cards:
+
+| Attribute | Description |
+|-----------|-------------|
+| `percentage` | Current speed as percentage (0-100) |
+| `preset_mode` | Current mode (Auto/Manual) |
+| `preset_modes` | Available modes list |
+| `pm25` | Current PM2.5 reading (µg/m³) |
+| `aqi` | Alias for pm25 (for card compatibility) |
+| `filter_life_remaining` | Filter hours remaining |
+| `speed` | Current speed level (1/2/3) |
+| `speed_list` | Available speed levels |
+
 ## MQTT Topics
 
 ### Smart Plug Topics
@@ -190,6 +205,66 @@ The JSON payload will contain:
 - `/monitor/{unit_uuid}/{device_uuid}/aqiStatus` - PM2.5 readings
 - `/monitor/{unit_uuid}/{device_uuid}/filterReset` - Filter life remaining
 - `/monitor/{unit_uuid}/{device_uuid}/heartbeat` - Device heartbeat
+
+## Lovelace Dashboard Cards
+
+### Purifier Card (Recommended)
+
+This integration is compatible with [purifier-card](https://github.com/denysdovhan/purifier-card) for a beautiful air purifier UI.
+
+**Installation:**
+1. Install purifier-card via HACS or manually
+2. Add the card to your dashboard
+
+**Example Configuration:**
+```yaml
+type: custom:purifier-card
+entity: fan.qubo_air_purifier
+show_name: true
+show_state: true
+show_toolbar: true
+
+# AQI display (reads from fan entity attribute)
+aqi:
+  attribute: aqi
+  unit: 'µg/m³'
+
+# Stats display
+stats:
+  - attribute: pm25
+    unit: 'µg/m³'
+    subtitle: PM2.5
+  - attribute: filter_life_remaining
+    unit: 'hours'
+    subtitle: Filter Life
+
+# Quick shortcuts
+shortcuts:
+  - name: Low
+    icon: mdi:fan-speed-1
+    percentage: 33
+  - name: Medium
+    icon: mdi:fan-speed-2
+    percentage: 66
+  - name: High
+    icon: mdi:fan-speed-3
+    percentage: 100
+  - name: Auto
+    icon: mdi:brightness-auto
+    preset_mode: Auto
+  - name: Manual
+    icon: mdi:hand-back-right
+    preset_mode: Manual
+```
+
+### Standard Fan Card
+
+You can also use the built-in fan card:
+```yaml
+type: fan
+entity: fan.qubo_air_purifier
+name: Air Purifier
+```
 
 ## Troubleshooting
 
