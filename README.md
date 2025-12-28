@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://d29rw3zaldax51.cloudfront.net/assets/images/footer/black-theam.png" alt="QUBO Logo" width="200">
+</p>
+
 # QUBO Local Control - Home Assistant Integration
 
 Home Assistant custom integration for local control of QUBO Smart Plugs and Air Purifiers via MQTT.
