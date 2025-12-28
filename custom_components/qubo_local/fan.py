@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from typing import Any
 
 from homeassistant.components import mqtt
@@ -11,6 +10,7 @@ from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util.percentage import (
     ordered_list_item_to_percentage,
     percentage_to_ordered_list_item,
@@ -65,7 +65,7 @@ async def async_setup_entry(
     async_add_entities([QuboAirPurifier(hass, config_entry, device_info, config)])
 
 
-class QuboAirPurifier(FanEntity):
+class QuboAirPurifier(FanEntity, RestoreEntity):
     """Representation of a QUBO Air Purifier."""
 
     _attr_has_entity_name = True
@@ -78,6 +78,7 @@ class QuboAirPurifier(FanEntity):
     )
     _attr_speed_count = len(ORDERED_NAMED_FAN_SPEEDS)
     _attr_preset_modes = PRESET_MODES
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -124,6 +125,17 @@ class QuboAirPurifier(FanEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to MQTT topics when added to hass."""
+        # Restore previous state
+        if (last_state := await self.async_get_last_state()) is not None:
+            self._attr_is_on = last_state.state == "on"
+            if last_state.attributes.get("percentage") is not None:
+                self._attr_percentage = last_state.attributes["percentage"]
+            if last_state.attributes.get("preset_mode") is not None:
+                self._attr_preset_mode = last_state.attributes["preset_mode"]
+            _LOGGER.debug(
+                "Restored purifier state: on=%s, percentage=%s, mode=%s",
+                self._attr_is_on, self._attr_percentage, self._attr_preset_mode
+            )
 
         @callback
         def power_message_received(msg):
@@ -140,12 +152,10 @@ class QuboAirPurifier(FanEntity):
                 if power_state is not None:
                     self._attr_is_on = power_state.lower() == "on"
                     if self._attr_is_on and self._attr_percentage == 0:
-                        # Default to low speed when turning on
+                        # Default to current speed or low when turning on
                         self._attr_percentage = ordered_list_item_to_percentage(
-                            ORDERED_NAMED_FAN_SPEEDS, PURIFIER_SPEED_LOW
+                            ORDERED_NAMED_FAN_SPEEDS, self._current_speed
                         )
-                    elif not self._attr_is_on:
-                        self._attr_percentage = 0
                     self.async_write_ha_state()
                     _LOGGER.debug("Purifier power state: %s", self._attr_is_on)
 
@@ -166,12 +176,12 @@ class QuboAirPurifier(FanEntity):
 
                 if speed is not None:
                     self._current_speed = speed
-                    if self._attr_is_on:
-                        self._attr_percentage = ordered_list_item_to_percentage(
-                            ORDERED_NAMED_FAN_SPEEDS, speed
-                        )
-                        self.async_write_ha_state()
-                    _LOGGER.debug("Purifier speed: %s", speed)
+                    # Always update percentage - will show when turned on
+                    self._attr_percentage = ordered_list_item_to_percentage(
+                        ORDERED_NAMED_FAN_SPEEDS, speed
+                    )
+                    self.async_write_ha_state()
+                    _LOGGER.debug("Purifier speed: %s, percentage: %s", speed, self._attr_percentage)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing speed: %s", err)
