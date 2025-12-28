@@ -169,8 +169,8 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         @callback
         def power_message_received(msg):
             """Handle power state messages."""
-            _LOGGER.warning("POWER CALLBACK TRIGGERED - topic: %s", msg.topic)
-            _LOGGER.warning("POWER CALLBACK - full payload: %s", msg.payload)
+            _LOGGER.warning("=== POWER CALLBACK v2 === topic: %s", msg.topic)
+            _LOGGER.warning("=== POWER PAYLOAD === %s", msg.payload)
             try:
                 payload = json.loads(msg.payload)
                 devices = payload.get("devices", {})
@@ -315,7 +315,7 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 _LOGGER.error("Error processing filter: %s", err)
 
         # Subscribe to monitor topics
-        _LOGGER.warning("Subscribing to MQTT topics:")
+        _LOGGER.warning("=== QUBO FAN v2 === Subscribing to MQTT topics:")
         _LOGGER.warning("  Power topic: %s", self._monitor_switch_topic)
         _LOGGER.warning("  Speed topic: %s", self._monitor_speed_topic)
         _LOGGER.warning("  Mode topic: %s", self._monitor_mode_topic)
