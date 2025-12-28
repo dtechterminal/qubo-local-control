@@ -152,7 +152,6 @@ class QuboEnergySensor(SensorEntity):
     """Representation of a QUBO energy monitoring sensor."""
 
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -177,6 +176,11 @@ class QuboEnergySensor(SensorEntity):
 
         device_uuid = config[CONF_DEVICE_UUID]
         self._attr_unique_id = f"{device_uuid}_{entity_id}"
+        # Energy sensors need TOTAL_INCREASING, others use MEASUREMENT
+        if device_class == SensorDeviceClass.ENERGY:
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        else:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_name = name
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
