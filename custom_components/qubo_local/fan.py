@@ -169,21 +169,34 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         @callback
         def power_message_received(msg):
             """Handle power state messages."""
-            _LOGGER.warning("POWER CALLBACK TRIGGERED - raw payload: %s", msg.payload[:200] if len(msg.payload) > 200 else msg.payload)
+            _LOGGER.warning("POWER CALLBACK TRIGGERED - topic: %s", msg.topic)
+            _LOGGER.warning("POWER CALLBACK - full payload: %s", msg.payload)
             try:
                 payload = json.loads(msg.payload)
                 devices = payload.get("devices", {})
                 services = devices.get("services", {})
                 switch_service = services.get("lcSwitchControl", {})
+
+                _LOGGER.warning("POWER - switch_service keys: %s", list(switch_service.keys()))
+
+                # Try events.stateChanged path first
                 events = switch_service.get("events", {})
                 state_changed = events.get("stateChanged", {})
                 power_state = state_changed.get("power")
 
-                _LOGGER.warning("POWER STATE EXTRACTED: %s", power_state)
+                # Also try attributes path (device might respond differently)
+                if power_state is None:
+                    attributes = switch_service.get("attributes", {})
+                    power_state = attributes.get("power")
+                    if power_state:
+                        _LOGGER.warning("POWER - found in attributes path: %s", power_state)
+
+                _LOGGER.warning("POWER STATE EXTRACTED: %s (current is_on=%s)", power_state, self._attr_is_on)
 
                 if power_state is not None:
-                    _LOGGER.warning("MQTT power received: '%s', current is_on=%s", power_state, self._attr_is_on)
-                    self._attr_is_on = power_state.lower() == "on"
+                    new_is_on = power_state.lower() == "on"
+                    _LOGGER.warning("MQTT power setting is_on: %s -> %s", self._attr_is_on, new_is_on)
+                    self._attr_is_on = new_is_on
                     if self._attr_is_on:
                         # Always set percentage based on current speed when on
                         self._attr_percentage = ordered_list_item_to_percentage(
@@ -194,6 +207,8 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                         self._attr_percentage = 0
                     _LOGGER.warning("MQTT power processed: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
                     self.async_write_ha_state()
+                else:
+                    _LOGGER.warning("POWER - no power state found in payload")
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing power state: %s", err)
@@ -249,19 +264,25 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         @callback
         def aqi_message_received(msg):
             """Handle AQI/PM2.5 messages."""
+            _LOGGER.warning("AQI CALLBACK - payload: %s", msg.payload)
             try:
                 payload = json.loads(msg.payload)
                 devices = payload.get("devices", {})
                 services = devices.get("services", {})
                 aqi_service = services.get("aqiStatus", {})
+
+                _LOGGER.warning("AQI - aqi_service keys: %s", list(aqi_service.keys()))
+
                 events = aqi_service.get("events", {})
                 state_changed = events.get("stateChanged", {})
                 pm25 = state_changed.get("PM25")
 
+                _LOGGER.warning("AQI - PM25 value: %s", pm25)
+
                 if pm25 is not None:
                     self._pm25 = int(pm25)
                     self.async_write_ha_state()
-                    _LOGGER.debug("PM2.5: %s", self._pm25)
+                    _LOGGER.warning("PM2.5 updated: %s", self._pm25)
 
             except (json.JSONDecodeError, KeyError, ValueError) as err:
                 _LOGGER.error("Error processing AQI: %s", err)
@@ -269,20 +290,26 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         @callback
         def filter_message_received(msg):
             """Handle filter life messages."""
+            _LOGGER.warning("FILTER CALLBACK - payload: %s", msg.payload)
             try:
                 payload = json.loads(msg.payload)
                 devices = payload.get("devices", {})
                 services = devices.get("services", {})
                 filter_service = services.get("filterReset", {})
+
+                _LOGGER.warning("FILTER - filter_service keys: %s", list(filter_service.keys()))
+
                 events = filter_service.get("events", {})
                 state_changed = events.get("stateChanged", {})
                 time_remaining = state_changed.get("timeRemaining")
+
+                _LOGGER.warning("FILTER - timeRemaining: %s", time_remaining)
 
                 if time_remaining is not None:
                     # Value is already in hours
                     self._filter_life_remaining = int(time_remaining)
                     self.async_write_ha_state()
-                    _LOGGER.debug("Filter life: %s hours", self._filter_life_remaining)
+                    _LOGGER.warning("Filter life updated: %s hours", self._filter_life_remaining)
 
             except (json.JSONDecodeError, KeyError, ValueError) as err:
                 _LOGGER.error("Error processing filter: %s", err)
@@ -343,13 +370,14 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
-        _LOGGER.info("async_turn_off called, current is_on=%s", self._attr_is_on)
+        _LOGGER.warning("=== async_turn_off CALLED, current is_on=%s ===", self._attr_is_on)
         await self._publish_power_command("off")
         # Optimistic update (Xiaomi-Miot pattern: 0% when off)
         self._attr_is_on = False
         self._attr_percentage = 0
-        _LOGGER.info("async_turn_off optimistic update: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
+        _LOGGER.warning("=== async_turn_off OPTIMISTIC: is_on=%s, percentage=%s ===", self._attr_is_on, self._attr_percentage)
         self.async_write_ha_state()
+        _LOGGER.warning("=== async_turn_off DONE, async_write_ha_state called ===")
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed percentage."""
