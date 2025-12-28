@@ -32,8 +32,10 @@ from .const import (
     TOPIC_CONTROL_FAN_MODE,
     TOPIC_CONTROL_FAN_SPEED,
     TOPIC_CONTROL_SWITCH,
+    TOPIC_MONITOR_AQI,
     TOPIC_MONITOR_FAN_MODE,
     TOPIC_MONITOR_FAN_SPEED,
+    TOPIC_MONITOR_FILTER,
     TOPIC_MONITOR_SWITCH,
 )
 
@@ -103,7 +105,11 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_MODE_AUTO
         self._current_speed = PURIFIER_SPEED_LOW
 
-        # MQTT topics
+        # Extra attributes for purifier-card compatibility
+        self._pm25: int | None = None
+        self._filter_life_remaining: float | None = None
+
+        # MQTT topics - Control
         self._control_switch_topic = TOPIC_CONTROL_SWITCH.format(
             unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
         )
@@ -113,6 +119,8 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         self._control_mode_topic = TOPIC_CONTROL_FAN_MODE.format(
             unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
         )
+
+        # MQTT topics - Monitor
         self._monitor_switch_topic = TOPIC_MONITOR_SWITCH.format(
             unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
         )
@@ -122,6 +130,27 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         self._monitor_mode_topic = TOPIC_MONITOR_FAN_MODE.format(
             unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
         )
+        self._monitor_aqi_topic = TOPIC_MONITOR_AQI.format(
+            unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
+        )
+        self._monitor_filter_topic = TOPIC_MONITOR_FILTER.format(
+            unit_uuid=self._unit_uuid, device_uuid=self._device_uuid
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes for purifier-card compatibility."""
+        attrs = {
+            "speed": self._current_speed,
+            "speed_list": ORDERED_NAMED_FAN_SPEEDS,
+        }
+        if self._pm25 is not None:
+            attrs["pm25"] = self._pm25
+            attrs["aqi"] = self._pm25  # Alias for purifier-card
+        if self._filter_life_remaining is not None:
+            attrs["filter_life_remaining"] = self._filter_life_remaining
+            attrs["filter_hours_remaining"] = self._filter_life_remaining
+        return attrs
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to MQTT topics when added to hass."""
@@ -214,10 +243,53 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing mode: %s", err)
 
+        @callback
+        def aqi_message_received(msg):
+            """Handle AQI/PM2.5 messages."""
+            try:
+                payload = json.loads(msg.payload)
+                devices = payload.get("devices", {})
+                services = devices.get("services", {})
+                aqi_service = services.get("aqiStatus", {})
+                events = aqi_service.get("events", {})
+                state_changed = events.get("stateChanged", {})
+                pm25 = state_changed.get("PM25")
+
+                if pm25 is not None:
+                    self._pm25 = int(pm25)
+                    self.async_write_ha_state()
+                    _LOGGER.debug("PM2.5: %s", self._pm25)
+
+            except (json.JSONDecodeError, KeyError, ValueError) as err:
+                _LOGGER.error("Error processing AQI: %s", err)
+
+        @callback
+        def filter_message_received(msg):
+            """Handle filter life messages."""
+            try:
+                payload = json.loads(msg.payload)
+                devices = payload.get("devices", {})
+                services = devices.get("services", {})
+                filter_service = services.get("filterReset", {})
+                events = filter_service.get("events", {})
+                state_changed = events.get("stateChanged", {})
+                time_remaining = state_changed.get("timeRemaining")
+
+                if time_remaining is not None:
+                    # Convert minutes to hours
+                    self._filter_life_remaining = round(int(time_remaining) / 60, 1)
+                    self.async_write_ha_state()
+                    _LOGGER.debug("Filter life: %s hours", self._filter_life_remaining)
+
+            except (json.JSONDecodeError, KeyError, ValueError) as err:
+                _LOGGER.error("Error processing filter: %s", err)
+
         # Subscribe to monitor topics
         await mqtt.async_subscribe(self.hass, self._monitor_switch_topic, power_message_received, 1)
         await mqtt.async_subscribe(self.hass, self._monitor_speed_topic, speed_message_received, 1)
         await mqtt.async_subscribe(self.hass, self._monitor_mode_topic, mode_message_received, 1)
+        await mqtt.async_subscribe(self.hass, self._monitor_aqi_topic, aqi_message_received, 1)
+        await mqtt.async_subscribe(self.hass, self._monitor_filter_topic, filter_message_received, 1)
 
     async def async_turn_on(
         self,
