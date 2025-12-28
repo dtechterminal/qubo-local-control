@@ -12,9 +12,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_DEVICE_TYPE,
     CONF_DEVICE_UUID,
     CONF_ENTITY_UUID,
     CONF_UNIT_UUID,
+    DEVICE_TYPE_AIR_PURIFIER,
     DOMAIN,
     ENTITY_SWITCH,
     TOPIC_CONTROL_SWITCH,
@@ -33,6 +35,10 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][config_entry.entry_id]
     device_info = data["device_info"]
     config = data["config"]
+
+    # Only add switch entity for smart plugs (not air purifiers)
+    if config.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_AIR_PURIFIER:
+        return
 
     async_add_entities([QuboSwitch(hass, config_entry, device_info, config)])
 

@@ -18,11 +18,17 @@ import homeassistant.helpers.config_validation as cv
 from .const import (
     CONF_DEVICE_MAC,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_TYPE,
     CONF_DEVICE_UUID,
     CONF_ENTITY_UUID,
     CONF_HANDLE_NAME,
     CONF_UNIT_UUID,
     DEFAULT_NAME,
+    DEFAULT_NAME_PURIFIER,
+    DEVICE_PREFIX_PLUG,
+    DEVICE_PREFIX_PURIFIER,
+    DEVICE_TYPE_AIR_PURIFIER,
+    DEVICE_TYPE_SMART_PLUG,
     DOMAIN,
 )
 
@@ -132,12 +138,21 @@ class QuboLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 user_uuid = devices_data.get("userUUID")
                 src_device_id = devices_data.get("srcDeviceId", "")
 
-                # Parse MAC address from srcDeviceId (format: HSP_CC:8D:A2:DC:F3:BC)
+                # Parse device prefix and MAC address from srcDeviceId (format: HSP_CC:8D:A2:DC:F3:BC or HPH_94:51:DC:68:14:7C)
+                device_prefix = src_device_id.split("_", 1)[0] if "_" in src_device_id else ""
                 mac_address = src_device_id.split("_", 1)[1] if "_" in src_device_id else ""
+
+                # Determine device type based on prefix
+                if device_prefix == DEVICE_PREFIX_PURIFIER:
+                    device_type = DEVICE_TYPE_AIR_PURIFIER
+                    default_name = DEFAULT_NAME_PURIFIER
+                else:
+                    device_type = DEVICE_TYPE_SMART_PLUG
+                    default_name = DEFAULT_NAME
 
                 # Generate a friendly device name
                 mac_short = mac_address.replace(":", "")[-6:] if mac_address else device_uuid[:8]
-                device_name = f"QUBO Smart Plug {mac_short}"
+                device_name = f"{default_name} {mac_short}"
 
                 # Store discovered device
                 self._discovered_devices[device_uuid] = {
@@ -147,9 +162,10 @@ class QuboLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_HANDLE_NAME: user_uuid,
                     CONF_DEVICE_NAME: device_name,
                     CONF_DEVICE_MAC: mac_address,
+                    CONF_DEVICE_TYPE: device_type,
                 }
 
-                _LOGGER.info("Discovered QUBO device: %s (%s)", device_name, mac_address)
+                _LOGGER.info("Discovered QUBO %s: %s (%s)", device_type, device_name, mac_address)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.debug("Error parsing MQTT message: %s", err)
@@ -193,6 +209,10 @@ class QuboLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_HANDLE_NAME): cv.string,
                 vol.Optional(CONF_DEVICE_NAME, default=DEFAULT_NAME): cv.string,
                 vol.Optional(CONF_DEVICE_MAC): cv.string,
+                vol.Optional(CONF_DEVICE_TYPE, default=DEVICE_TYPE_SMART_PLUG): vol.In({
+                    DEVICE_TYPE_SMART_PLUG: "Smart Plug",
+                    DEVICE_TYPE_AIR_PURIFIER: "Air Purifier",
+                }),
             }
         )
 
