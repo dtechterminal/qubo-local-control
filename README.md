@@ -4,6 +4,10 @@
 
 # QUBO Local Control - Home Assistant Integration
 
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/dtechterminal/qubo-local-control/releases)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-green.svg)](https://www.home-assistant.io/)
+[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+
 Home Assistant custom integration for local control of QUBO Smart Plugs and Air Purifiers via MQTT.
 
 ## Features
@@ -18,9 +22,9 @@ Home Assistant custom integration for local control of QUBO Smart Plugs and Air 
 ### Air Purifier
 - **Fan Control** - Turn on/off with speed levels (Low, Medium, High)
 - **Preset Modes** - Auto and Manual modes
-- **Air Quality Monitoring** - Real-time PM2.5 readings
-- **Filter Life Tracking** - Monitor remaining filter life in hours
-- **Automatic Updates** - AQI data refreshed every 30 seconds
+- **Air Quality Monitoring** - Real-time PM2.5 readings (updated every ~3 seconds)
+- **Filter Life Tracking** - Monitor remaining filter life in hours (auto-refreshed hourly)
+- **Purifier Card Compatible** - Works with popular purifier-card for beautiful UI
 
 ### General
 - **Device Integration** - All entities grouped under a single device in Home Assistant
@@ -458,6 +462,25 @@ Contributions are welcome! Please open an issue or submit a pull request.
 ## Credits
 
 Developed by [@dtechterminal](https://github.com/dtechterminal)
+
+## Changelog
+
+### v1.4.0
+- Fixed fan state not updating correctly after power toggle
+- Added automatic hourly filter status refresh
+- Fixed energy sensor state class for proper long-term statistics
+
+### v1.3.0
+- Added Air Purifier support with fan control, PM2.5 sensor, and filter life tracking
+- Added purifier-card compatibility with extra state attributes
+
+### v1.2.0
+- Added automatic device discovery via MQTT heartbeat messages
+- Improved device type auto-detection (Smart Plug vs Air Purifier)
+
+### v1.0.0
+- Initial release with Smart Plug support
+- Switch control and energy monitoring
 
 ## Support
 
