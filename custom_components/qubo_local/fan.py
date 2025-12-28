@@ -179,6 +179,7 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 power_state = state_changed.get("power")
 
                 if power_state is not None:
+                    _LOGGER.info("MQTT power received: '%s', current is_on=%s", power_state, self._attr_is_on)
                     self._attr_is_on = power_state.lower() == "on"
                     if self._attr_is_on:
                         # Always set percentage based on current speed when on
@@ -188,8 +189,8 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                     else:
                         # 0% when off
                         self._attr_percentage = 0
+                    _LOGGER.info("MQTT power processed: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
                     self.async_write_ha_state()
-                    _LOGGER.debug("Purifier power state: %s, percentage: %s", self._attr_is_on, self._attr_percentage)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing power state: %s", err)
@@ -323,10 +324,12 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
+        _LOGGER.info("async_turn_off called, current is_on=%s", self._attr_is_on)
         await self._publish_power_command("off")
         # Optimistic update (Xiaomi-Miot pattern: 0% when off)
         self._attr_is_on = False
         self._attr_percentage = 0
+        _LOGGER.info("async_turn_off optimistic update: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
         self.async_write_ha_state()
 
     async def async_set_percentage(self, percentage: int) -> None:
