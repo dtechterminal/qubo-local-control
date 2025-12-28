@@ -1,22 +1,33 @@
 # QUBO Local Control - Home Assistant Integration
 
-Home Assistant custom integration for local control of QUBO Smart Plugs via MQTT.
+Home Assistant custom integration for local control of QUBO Smart Plugs and Air Purifiers via MQTT.
 
 ## Features
 
+### Smart Plug
 - **Automatic Device Discovery** - Automatically detects QUBO devices on your network via MQTT
 - **100% Local Control** - No cloud dependency, complete privacy
 - **Real-time Switch Control** - Turn devices on/off instantly
 - **Energy Monitoring** - Track power consumption, voltage, current, and total energy
 - **Automatic Updates** - Energy data refreshed every 60 seconds
+
+### Air Purifier
+- **Fan Control** - Turn on/off with speed levels (Low, Medium, High)
+- **Preset Modes** - Auto and Manual modes
+- **Air Quality Monitoring** - Real-time PM2.5 readings
+- **Filter Life Tracking** - Monitor remaining filter life in hours
+- **Automatic Updates** - AQI data refreshed every 30 seconds
+
+### General
 - **Device Integration** - All entities grouped under a single device in Home Assistant
+- **Auto Device Type Detection** - Automatically identifies Smart Plugs (HSP) and Air Purifiers (HPH)
 
 ## Requirements
 
 - Home Assistant with MQTT integration configured
 - Local MQTT broker (e.g., Mosquitto) with TLS/SSL support
 - Router or DNS server with custom DNS entry support
-- QUBO Smart Plug
+- QUBO Smart Plug and/or Air Purifier
 
 ## Setup Local MQTT Redirect
 
@@ -73,7 +84,7 @@ rm -rf qubo-local-control
 
 ### Automatic Discovery (Recommended)
 
-The integration can automatically discover QUBO devices on your network by listening to MQTT heartbeat messages.
+The integration can automatically discover QUBO devices on your network by listening to MQTT heartbeat messages. It automatically detects whether a device is a Smart Plug or Air Purifier based on the device ID prefix.
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
@@ -83,7 +94,7 @@ The integration can automatically discover QUBO devices on your network by liste
 6. Select your device from the dropdown
 7. Click **Submit**
 
-The integration will automatically extract all required information (UUIDs, MAC address) from the device's MQTT messages.
+The integration will automatically extract all required information (UUIDs, MAC address, device type) from the device's MQTT messages.
 
 ### Manual Configuration
 
@@ -110,6 +121,10 @@ The JSON payload will contain:
 }
 ```
 
+**Device Type Identification:**
+- `HSP_` prefix = Smart Plug
+- `HPH_` prefix = Air Purifier
+
 #### Step 2: Add Integration in Home Assistant
 
 1. Go to **Settings** → **Devices & Services**
@@ -123,41 +138,62 @@ The JSON payload will contain:
    - Handle Name (userUUID)
    - Device Name (optional, friendly name)
    - Device MAC Address (optional)
+   - Device Type (Smart Plug or Air Purifier)
 6. Click **Submit**
 
 ## Entities Created
 
-The integration creates the following entities for each device:
+### Smart Plug
 
-### Switch
-- **Switch** - Controls the power state of the smart plug
+| Entity | Type | Description |
+|--------|------|-------------|
+| Switch | `switch` | Controls the power state |
+| Power | `sensor` | Current power consumption (W) |
+| Voltage | `sensor` | Current voltage (V) |
+| Current | `sensor` | Current draw (A) |
+| Energy | `sensor` | Total energy consumption (kWh) |
 
-### Sensors
-- **Power** - Current power consumption (W)
-- **Voltage** - Current voltage (V)
-- **Current** - Current draw (A)
-- **Energy** - Total energy consumption (kWh)
+### Air Purifier
+
+| Entity | Type | Description |
+|--------|------|-------------|
+| Fan | `fan` | On/Off, Speed (Low/Medium/High), Mode (Auto/Manual) |
+| PM2.5 | `sensor` | Air quality reading (µg/m³) |
+| Filter Life | `sensor` | Remaining filter life (hours) |
 
 ## MQTT Topics
 
-The integration uses the following MQTT topic patterns:
+### Smart Plug Topics
 
-### Control Topics (Publish)
+#### Control (Publish)
 - `/control/{unit_uuid}/{device_uuid}/lcSwitchControl` - Switch control
 - `/control/{unit_uuid}/{device_uuid}/meteringRefresh` - Energy monitoring refresh
 
-### Monitor Topics (Subscribe)
+#### Monitor (Subscribe)
 - `/monitor/{unit_uuid}/{device_uuid}/lcSwitchControl` - Switch state updates
 - `/monitor/{unit_uuid}/{device_uuid}/plugMetering` - Energy data updates
 - `/monitor/{unit_uuid}/{device_uuid}/heartbeat` - Device heartbeat
 
-## Energy Monitoring
+### Air Purifier Topics
 
-The integration automatically sends `meteringRefresh` commands every 60 seconds to keep energy data flowing. This mimics the behavior of the official QUBO app.
+#### Control (Publish)
+- `/control/{unit_uuid}/{device_uuid}/lcSwitchControl` - Power control
+- `/control/{unit_uuid}/{device_uuid}/fanSpeedControl` - Fan speed (1/2/3)
+- `/control/{unit_uuid}/{device_uuid}/fanControlMode` - Mode (auto/manual)
+- `/control/{unit_uuid}/{device_uuid}/aqiRefresh` - AQI data refresh
+- `/control/{unit_uuid}/{device_uuid}/filterReset` - Filter status request
+
+#### Monitor (Subscribe)
+- `/monitor/{unit_uuid}/{device_uuid}/lcSwitchControl` - Power state updates
+- `/monitor/{unit_uuid}/{device_uuid}/fanSpeedControl` - Speed state updates
+- `/monitor/{unit_uuid}/{device_uuid}/fanControlMode` - Mode state updates
+- `/monitor/{unit_uuid}/{device_uuid}/aqiStatus` - PM2.5 readings
+- `/monitor/{unit_uuid}/{device_uuid}/filterReset` - Filter life remaining
+- `/monitor/{unit_uuid}/{device_uuid}/heartbeat` - Device heartbeat
 
 ## Troubleshooting
 
-### No Energy Data
+### No Energy Data (Smart Plug)
 
 If energy sensors are not updating:
 
@@ -168,7 +204,15 @@ If energy sensors are not updating:
    Settings → System → Logs
    ```
 
-### Switch Not Responding
+### No AQI Data (Air Purifier)
+
+If PM2.5 sensor is not updating:
+
+1. Verify device is connected to local MQTT broker
+2. Check if heartbeat messages are being received
+3. The purifier reports AQI every ~3 seconds when running
+
+### Switch/Fan Not Responding
 
 1. Verify MQTT topics are correct
 2. Check device UUIDs match your device
@@ -194,8 +238,9 @@ custom_components/qubo_local/
 ├── __init__.py          # Main integration setup
 ├── config_flow.py       # Configuration UI
 ├── const.py             # Constants and configuration keys
+├── fan.py               # Air Purifier fan platform
 ├── manifest.json        # Integration metadata
-├── sensor.py            # Energy monitoring sensors
+├── sensor.py            # Energy and AQI sensors
 ├── strings.json         # UI strings
 ├── switch.py            # Switch platform
 └── translations/
@@ -204,7 +249,7 @@ custom_components/qubo_local/
 
 ## Protocol Details
 
-### Switch Command Format
+### Power Control (Both Devices)
 ```json
 {
   "command": {
@@ -224,7 +269,49 @@ custom_components/qubo_local/
 }
 ```
 
-### Energy Refresh Command Format
+### Fan Speed Control (Air Purifier)
+```json
+{
+  "command": {
+    "devices": {
+      "deviceUUID": "device-uuid",
+      "entityUUID": "entity-uuid",
+      "services": {
+        "fanSpeedControl": {
+          "attributes": {
+            "speed": "3"
+          },
+          "instanceId": 0
+        }
+      }
+    }
+  }
+}
+```
+Speed values: `1` (Low), `2` (Medium), `3` (High)
+
+### Fan Mode Control (Air Purifier)
+```json
+{
+  "command": {
+    "devices": {
+      "deviceUUID": "device-uuid",
+      "entityUUID": "entity-uuid",
+      "services": {
+        "fanControlMode": {
+          "attributes": {
+            "state": "auto"
+          },
+          "instanceId": 0
+        }
+      }
+    }
+  }
+}
+```
+Mode values: `auto`, `manual`
+
+### Energy Refresh (Smart Plug)
 ```json
 {
   "command": {
@@ -243,6 +330,43 @@ custom_components/qubo_local/
   }
 }
 ```
+
+### AQI Status Response (Air Purifier)
+```json
+{
+  "devices": {
+    "services": {
+      "aqiStatus": {
+        "events": {
+          "stateChanged": {
+            "PM25": "5"
+          }
+        },
+        "instanceId": "0"
+      }
+    }
+  }
+}
+```
+
+### Filter Status Response (Air Purifier)
+```json
+{
+  "devices": {
+    "services": {
+      "filterReset": {
+        "events": {
+          "stateChanged": {
+            "timeRemaining": "8997"
+          }
+        },
+        "instanceId": "0"
+      }
+    }
+  }
+}
+```
+`timeRemaining` is in minutes.
 
 ## License
 
