@@ -169,6 +169,7 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         @callback
         def power_message_received(msg):
             """Handle power state messages."""
+            _LOGGER.warning("POWER CALLBACK TRIGGERED - raw payload: %s", msg.payload[:200] if len(msg.payload) > 200 else msg.payload)
             try:
                 payload = json.loads(msg.payload)
                 devices = payload.get("devices", {})
@@ -178,8 +179,10 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 state_changed = events.get("stateChanged", {})
                 power_state = state_changed.get("power")
 
+                _LOGGER.warning("POWER STATE EXTRACTED: %s", power_state)
+
                 if power_state is not None:
-                    _LOGGER.info("MQTT power received: '%s', current is_on=%s", power_state, self._attr_is_on)
+                    _LOGGER.warning("MQTT power received: '%s', current is_on=%s", power_state, self._attr_is_on)
                     self._attr_is_on = power_state.lower() == "on"
                     if self._attr_is_on:
                         # Always set percentage based on current speed when on
@@ -189,7 +192,7 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                     else:
                         # 0% when off
                         self._attr_percentage = 0
-                    _LOGGER.info("MQTT power processed: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
+                    _LOGGER.warning("MQTT power processed: is_on=%s, percentage=%s", self._attr_is_on, self._attr_percentage)
                     self.async_write_ha_state()
 
             except (json.JSONDecodeError, KeyError) as err:
