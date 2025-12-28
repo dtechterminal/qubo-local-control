@@ -288,11 +288,27 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
                 _LOGGER.error("Error processing filter: %s", err)
 
         # Subscribe to monitor topics
-        await mqtt.async_subscribe(self.hass, self._monitor_switch_topic, power_message_received, 1)
-        await mqtt.async_subscribe(self.hass, self._monitor_speed_topic, speed_message_received, 1)
-        await mqtt.async_subscribe(self.hass, self._monitor_mode_topic, mode_message_received, 1)
-        await mqtt.async_subscribe(self.hass, self._monitor_aqi_topic, aqi_message_received, 1)
-        await mqtt.async_subscribe(self.hass, self._monitor_filter_topic, filter_message_received, 1)
+        _LOGGER.warning("Subscribing to MQTT topics:")
+        _LOGGER.warning("  Power topic: %s", self._monitor_switch_topic)
+        _LOGGER.warning("  Speed topic: %s", self._monitor_speed_topic)
+        _LOGGER.warning("  Mode topic: %s", self._monitor_mode_topic)
+        _LOGGER.warning("  AQI topic: %s", self._monitor_aqi_topic)
+        _LOGGER.warning("  Filter topic: %s", self._monitor_filter_topic)
+
+        unsub_power = await mqtt.async_subscribe(self.hass, self._monitor_switch_topic, power_message_received, 1)
+        unsub_speed = await mqtt.async_subscribe(self.hass, self._monitor_speed_topic, speed_message_received, 1)
+        unsub_mode = await mqtt.async_subscribe(self.hass, self._monitor_mode_topic, mode_message_received, 1)
+        unsub_aqi = await mqtt.async_subscribe(self.hass, self._monitor_aqi_topic, aqi_message_received, 1)
+        unsub_filter = await mqtt.async_subscribe(self.hass, self._monitor_filter_topic, filter_message_received, 1)
+
+        # Store unsubscribe callbacks for cleanup
+        self.async_on_remove(unsub_power)
+        self.async_on_remove(unsub_speed)
+        self.async_on_remove(unsub_mode)
+        self.async_on_remove(unsub_aqi)
+        self.async_on_remove(unsub_filter)
+
+        _LOGGER.warning("MQTT subscriptions complete")
 
     async def async_turn_on(
         self,
