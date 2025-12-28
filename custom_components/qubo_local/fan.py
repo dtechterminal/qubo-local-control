@@ -151,13 +151,17 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
 
                 if power_state is not None:
                     self._attr_is_on = power_state.lower() == "on"
-                    if self._attr_is_on and self._attr_percentage == 0:
-                        # Default to current speed or low when turning on
-                        self._attr_percentage = ordered_list_item_to_percentage(
-                            ORDERED_NAMED_FAN_SPEEDS, self._current_speed
-                        )
+                    if self._attr_is_on:
+                        # Set percentage based on current speed when turning on
+                        if self._attr_percentage == 0:
+                            self._attr_percentage = ordered_list_item_to_percentage(
+                                ORDERED_NAMED_FAN_SPEEDS, self._current_speed
+                            )
+                    else:
+                        # Xiaomi-Miot pattern: 0% when off
+                        self._attr_percentage = 0
                     self.async_write_ha_state()
-                    _LOGGER.debug("Purifier power state: %s", self._attr_is_on)
+                    _LOGGER.debug("Purifier power state: %s, percentage: %s", self._attr_is_on, self._attr_percentage)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing power state: %s", err)
@@ -176,12 +180,13 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
 
                 if speed is not None:
                     self._current_speed = speed
-                    # Always update percentage - will show when turned on
-                    self._attr_percentage = ordered_list_item_to_percentage(
-                        ORDERED_NAMED_FAN_SPEEDS, speed
-                    )
-                    self.async_write_ha_state()
-                    _LOGGER.debug("Purifier speed: %s, percentage: %s", speed, self._attr_percentage)
+                    # Only update percentage if on (Xiaomi-Miot pattern)
+                    if self._attr_is_on:
+                        self._attr_percentage = ordered_list_item_to_percentage(
+                            ORDERED_NAMED_FAN_SPEEDS, speed
+                        )
+                        self.async_write_ha_state()
+                    _LOGGER.debug("Purifier speed: %s (is_on=%s)", speed, self._attr_is_on)
 
             except (json.JSONDecodeError, KeyError) as err:
                 _LOGGER.error("Error processing speed: %s", err)
@@ -220,17 +225,38 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
         preset_mode: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Turn on the purifier."""
-        await self._publish_power_command("on")
+        """Turn on the purifier with optional speed/mode."""
+        # Turn on if not already on
+        if not self._attr_is_on:
+            await self._publish_power_command("on")
+            # Optimistic update
+            self._attr_is_on = True
+            if self._attr_percentage == 0:
+                self._attr_percentage = ordered_list_item_to_percentage(
+                    ORDERED_NAMED_FAN_SPEEDS, self._current_speed
+                )
 
-        if percentage is not None:
-            await self.async_set_percentage(percentage)
-        elif preset_mode is not None:
+        # Set speed if provided (like Xiaomi-Miot pattern)
+        if percentage is not None and percentage > 0:
+            speed = percentage_to_ordered_list_item(ORDERED_NAMED_FAN_SPEEDS, percentage)
+            await self._publish_speed_command(speed)
+            # Optimistic update
+            self._attr_percentage = percentage
+            self._current_speed = speed
+
+        # Set mode if provided
+        if preset_mode is not None:
             await self.async_set_preset_mode(preset_mode)
+
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
         await self._publish_power_command("off")
+        # Optimistic update (Xiaomi-Miot pattern: 0% when off)
+        self._attr_is_on = False
+        self._attr_percentage = 0
+        self.async_write_ha_state()
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed percentage."""
@@ -238,9 +264,19 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
             await self.async_turn_off()
             return
 
-        # Convert percentage to speed level
+        # Turn on first if not on (Xiaomi-Miot pattern)
+        if not self._attr_is_on:
+            await self._publish_power_command("on")
+            self._attr_is_on = True
+
+        # Convert percentage to speed level and publish
         speed = percentage_to_ordered_list_item(ORDERED_NAMED_FAN_SPEEDS, percentage)
         await self._publish_speed_command(speed)
+
+        # Optimistic update
+        self._attr_percentage = percentage
+        self._current_speed = speed
+        self.async_write_ha_state()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode."""
@@ -248,6 +284,9 @@ class QuboAirPurifier(FanEntity, RestoreEntity):
             await self._publish_mode_command(PURIFIER_MODE_AUTO)
         else:
             await self._publish_mode_command(PURIFIER_MODE_MANUAL)
+        # Optimistic update
+        self._attr_preset_mode = preset_mode
+        self.async_write_ha_state()
 
     async def _publish_power_command(self, power_state: str) -> None:
         """Publish MQTT command to control power."""
