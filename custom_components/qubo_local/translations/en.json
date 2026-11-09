@@ -2,48 +2,51 @@
   "config": {
     "step": {
       "user": {
-        "title": "QUBO Local Control Setup",
-        "description": "Choose how to add your QUBO Smart Plug.",
+        "title": "Add a QUBO device",
+        "description": "Find your QUBO smart plug or air purifier on your MQTT broker, or enter its details yourself.",
         "menu_options": {
-          "mqtt_discovery": "Automatic Discovery (Recommended)",
-          "manual": "Manual Configuration"
+          "mqtt_discovery": "Find devices automatically (recommended)",
+          "manual": "Enter device details"
         }
       },
-      "mqtt_discovery": {
-        "title": "Discover QUBO Devices",
-        "description": "Listening for QUBO devices on MQTT... This will take up to 30 seconds. Found {device_count} device(s).",
+      "pick_device": {
+        "title": "Choose a device",
+        "description": "Found {device_count} new QUBO device(s).",
         "data": {
-          "device": "Select Device"
+          "device": "Device"
         }
       },
       "manual": {
-        "title": "Manual QUBO Configuration",
-        "description": "Enter the device information to set up local control for your QUBO Smart Plug.",
+        "title": "Enter device details",
+        "description": "Copy these values from the device's heartbeat message on your MQTT broker.",
         "data": {
           "device_uuid": "Device UUID",
           "entity_uuid": "Entity UUID",
           "unit_uuid": "Unit UUID",
-          "handle_name": "Handle Name",
-          "device_name": "Device Name",
-          "device_mac": "Device MAC Address (Optional)"
+          "handle_name": "Handle name",
+          "device_name": "Device name",
+          "device_mac": "MAC address",
+          "device_type": "Device type"
         },
         "data_description": {
-          "device_uuid": "The unique identifier for your QUBO device",
-          "entity_uuid": "The entity UUID from MQTT messages",
-          "unit_uuid": "The unit UUID from MQTT messages",
-          "handle_name": "The handle name (usually userUUID)",
-          "device_name": "A friendly name for your device",
-          "device_mac": "The MAC address of your device (optional)"
+          "device_uuid": "`deviceUUID` in the heartbeat",
+          "entity_uuid": "`entityUUID` in the heartbeat",
+          "unit_uuid": "`unitUUID` in the heartbeat",
+          "handle_name": "`userUUID` in the heartbeat",
+          "device_name": "A name for the device in Home Assistant",
+          "device_mac": "Optional. The part of `srcDeviceId` after the underscore",
+          "device_type": "`HSP_` devices are smart plugs, `HPH_` devices are air purifiers"
         }
       }
     },
+    "progress": {
+      "discovering": "Listening for QUBO devices on MQTT for 30 seconds…"
+    },
     "error": {
-      "already_configured": "This device is already configured",
-      "discovery_failed": "Failed to discover devices via MQTT",
-      "no_devices_found": "No QUBO devices found. Make sure your devices are connected and sending heartbeat messages."
+      "no_devices_found": "No new QUBO devices were heard. Check that the device is connected to your broker, or enter its details below."
     },
     "abort": {
-      "already_configured": "This device is already configured"
+      "already_configured": "This device is already set up"
     }
   }
 }

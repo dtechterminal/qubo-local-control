@@ -45,3 +45,5 @@ Thumbs.db
 config/
 *.log
 secrets.yaml
+.pytest_cache/
+.ruff_cache/

@@ -1,14 +1,8 @@
-<p align="center">
-  <img src="https://d29rw3zaldax51.cloudfront.net/assets/images/footer/black-theam.png" alt="QUBO Logo" width="200">
-</p>
+# QUBO Local Control for Home Assistant
 
-# QUBO Local Control - Home Assistant Integration
+Control QUBO smart plugs and air purifiers from Home Assistant over your own MQTT broker, without the QUBO cloud.
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/dtechterminal/qubo-local-control/releases)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-green.svg)](https://www.home-assistant.io/)
-[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
-
-Home Assistant custom integration for local control of QUBO Smart Plugs and Air Purifiers via MQTT.
+This is an independent community integration. It is not made, supported or endorsed by QUBO or Hero Electronix.
 
 ## Features
 
@@ -32,7 +26,7 @@ Home Assistant custom integration for local control of QUBO Smart Plugs and Air 
 
 ## Requirements
 
-- Home Assistant with MQTT integration configured
+- Home Assistant 2025.3 or newer, with the MQTT integration configured
 - Local MQTT broker (e.g., Mosquitto) **with TLS/SSL enabled on port 8883**
 - Router or DNS server with custom DNS entry support
 - **All network clients must use your DNS server** (router DNS settings)
@@ -209,41 +203,30 @@ You should see heartbeat messages within 30-60 seconds of power cycling.
 
 ## Installation
 
-### Option 1: Manual Installation
+### With HACS (recommended)
 
-1. Copy the `custom_components/qubo_local` directory to your Home Assistant `custom_components` directory:
-   ```bash
-   cd /path/to/homeassistant/config
-   mkdir -p custom_components
-   cp -r /path/to/qubo-local-control/custom_components/qubo_local custom_components/
-   ```
+1. Open **HACS** in Home Assistant.
+2. Search for **QUBO Local Control**, open it, and click **Download**.
+3. **Restart Home Assistant.**
 
-2. Restart Home Assistant
+Not listed yet? Open **HACS → ⋮ → Custom repositories**, add `https://github.com/dtechterminal/qubo-local-control` as an **Integration**, then search again.
 
-### Option 2: Git Clone
+### Manually
 
-```bash
-cd /path/to/homeassistant/config/custom_components
-git clone https://github.com/dtechterminal/qubo-local-control.git
-mv qubo-local-control/custom_components/qubo_local .
-rm -rf qubo-local-control
-```
+Download the source code of the [latest release](https://github.com/dtechterminal/qubo-local-control/releases/latest), copy its `custom_components/qubo_local` folder into your Home Assistant `config/custom_components/` folder, and restart Home Assistant.
 
 ## Configuration
 
 ### Automatic Discovery (Recommended)
 
-The integration can automatically discover QUBO devices on your network by listening to MQTT heartbeat messages. It automatically detects whether a device is a Smart Plug or Air Purifier based on the device ID prefix.
+The integration listens for the heartbeat messages QUBO devices send to your broker, and tells smart plugs (`HSP_`) and air purifiers (`HPH_`) apart from their device ID.
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for "QUBO Local Control"
-4. Select **Automatic Discovery (Recommended)**
-5. Wait up to 30 seconds for device discovery
-6. Select your device from the dropdown
-7. Click **Submit**
+1. Go to **Settings** → **Devices & Services** → **+ Add Integration**.
+2. Search for **QUBO Local Control**.
+3. Choose **Find devices automatically**. It listens for 30 seconds.
+4. Pick your device and click **Submit**.
 
-The integration will automatically extract all required information (UUIDs, MAC address, device type) from the device's MQTT messages.
+Devices you have already added are not listed again. Heartbeats from the QUBO phone app are ignored. If nothing is heard, the integration opens the manual form instead.
 
 ### Manual Configuration
 
@@ -273,7 +256,7 @@ The JSON payload will contain:
     "entityUUID": "your-entity-uuid",
     "unitUUID": "your-unit-uuid",
     "userUUID": "your-user-uuid",
-    "srcDeviceId": "HSP_CC:8D:A2:DC:F3:BC"
+    "srcDeviceId": "HSP_AA:BB:CC:DD:EE:FF"
   }
 }
 ```
@@ -287,7 +270,7 @@ The JSON payload will contain:
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
 3. Search for "QUBO Local Control"
-4. Select **Manual Configuration**
+4. Select **Enter device details**
 5. Enter the device information:
    - Device UUID
    - Entity UUID
@@ -317,6 +300,8 @@ The JSON payload will contain:
 | Fan | `fan` | On/Off, Speed (Low/Medium/High), Mode (Auto/Manual) |
 | PM2.5 | `sensor` | Air quality reading (µg/m³) |
 | Filter Life | `sensor` | Remaining filter life (hours) |
+
+When a device disconnects from your broker, its last-will heartbeat reports it offline and its entities show as **unavailable** until it sends data again.
 
 #### Fan Entity Attributes
 
@@ -579,21 +564,28 @@ Each device can only be added once. To reconfigure:
 
 ## Development
 
-The integration is structured as follows:
-
 ```
 custom_components/qubo_local/
-├── __init__.py          # Main integration setup
-├── config_flow.py       # Configuration UI
-├── const.py             # Constants and configuration keys
-├── fan.py               # Air Purifier fan platform
-├── manifest.json        # Integration metadata
-├── sensor.py            # Energy and AQI sensors
-├── strings.json         # UI strings
-├── switch.py            # Switch platform
-└── translations/
-    └── en.json          # English translations
+├── __init__.py          # Setup: waits for MQTT, starts the device, forwards platforms
+├── protocol.py          # Topics, command payloads and message parsing (no Home Assistant imports)
+├── device.py            # One subscription per device, latest values, availability, refresh timers
+├── entity.py            # Base entity that follows its device's reported values
+├── config_flow.py       # Discovery and manual setup
+├── fan.py               # Air purifier
+├── sensor.py            # Energy, PM2.5 and filter-life sensors
+├── switch.py            # Smart plug relay
+├── brand/               # Integration icon (see docs/branding.md)
+└── translations/en.json
 ```
+
+Run the tests and linter:
+
+```sh
+uv run --with pytest pytest -q
+uv run --with ruff ruff check custom_components tests
+```
+
+The tests use payload shapes recorded from a real plug and purifier, with synthetic IDs.
 
 ## Protocol Details
 
@@ -729,6 +721,14 @@ Contributions are welcome! Please open an issue or submit a pull request.
 Developed by [@dtechterminal](https://github.com/dtechterminal)
 
 ## Changelog
+
+### v1.5.0
+- Entities show as unavailable while the device reports itself offline, instead of keeping stale states
+- One MQTT subscription per device; subscriptions are now removed when an entry is reloaded or deleted
+- Discovery shows a progress screen, ignores the QUBO app's heartbeats and already-added devices, and reads plug heartbeats that contain numbers with leading zeros
+- Setup waits for MQTT to be ready instead of failing
+- Refreshed integration icon, shown locally on Home Assistant 2026.3 and newer
+- Added tests and CI (tests, hassfest, HACS validation)
 
 ### v1.4.1
 - Improved documentation with detailed TLS/SSL setup instructions

@@ -1,20 +1,18 @@
-"""Config flow for QUBO Local Control integration."""
+"""Config flow for QUBO Local Control."""
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant import config_entries
 from homeassistant.components import mqtt
-from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 
+from . import protocol
 from .const import (
     CONF_DEVICE_MAC,
     CONF_DEVICE_NAME,
@@ -25,184 +23,113 @@ from .const import (
     CONF_UNIT_UUID,
     DEFAULT_NAME,
     DEFAULT_NAME_PURIFIER,
-    DEVICE_PREFIX_PLUG,
-    DEVICE_PREFIX_PURIFIER,
     DEVICE_TYPE_AIR_PURIFIER,
     DEVICE_TYPE_SMART_PLUG,
+    DISCOVERY_TIMEOUT,
     DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-DISCOVERY_TIMEOUT = 30  # seconds
+
+def _entry_data(beat: protocol.Heartbeat) -> dict[str, str]:
+    """Return config entry data for a discovered device."""
+    purifier = beat.prefix == protocol.PREFIX_PURIFIER
+    name = DEFAULT_NAME_PURIFIER if purifier else DEFAULT_NAME
+    return {
+        CONF_DEVICE_UUID: beat.device_uuid,
+        CONF_ENTITY_UUID: beat.entity_uuid,
+        CONF_UNIT_UUID: beat.unit_uuid,
+        CONF_HANDLE_NAME: beat.user_uuid,
+        CONF_DEVICE_NAME: f"{name} {beat.mac.replace(':', '')[-6:]}",
+        CONF_DEVICE_MAC: beat.mac,
+        CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_PURIFIER if purifier else DEVICE_TYPE_SMART_PLUG,
+    }
 
 
-class QuboLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for QUBO Local Control."""
+class QuboLocalConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Add a QUBO device."""
 
     VERSION = 1
 
-    def __init__(self):
-        """Initialize the config flow."""
-        self._discovered_devices = {}
-        self._discovery_task = None
+    def __init__(self) -> None:
+        self._discovered: dict[str, dict[str, str]] = {}
+        self._discovery_task: asyncio.Task[None] | None = None
+        self._manual_errors: dict[str, str] = {}
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the user step - choose discovery or manual."""
-        if user_input is not None:
-            if user_input.get("discovery_mode") == "auto":
-                return await self.async_step_mqtt_discovery()
-            return await self.async_step_manual()
-
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=["mqtt_discovery", "manual"],
-        )
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose discovery or manual setup."""
+        return self.async_show_menu(step_id="user", menu_options=["mqtt_discovery", "manual"])
 
     async def async_step_mqtt_discovery(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Discover QUBO devices via MQTT."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            # User selected a discovered device
-            device_id = user_input["device"]
-            device_data = self._discovered_devices[device_id]
-
-            # Set unique ID and check if already configured
-            await self.async_set_unique_id(device_data[CONF_DEVICE_UUID])
-            self._abort_if_unique_id_configured()
-
-            # Create the config entry
-            return self.async_create_entry(
-                title=device_data[CONF_DEVICE_NAME],
-                data=device_data,
+    ) -> ConfigFlowResult:
+        """Listen for device heartbeats."""
+        if self._discovery_task is None:
+            self._discovery_task = self.hass.async_create_task(self._async_discover())
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="mqtt_discovery",
+                progress_action="discovering",
+                progress_task=self._discovery_task,
             )
+        self._discovery_task = None
+        if not self._discovered:
+            self._manual_errors = {"base": "no_devices_found"}
+            return self.async_show_progress_done(next_step_id="manual")
+        return self.async_show_progress_done(next_step_id="pick_device")
 
-        # Start device discovery
-        self._discovered_devices = {}
-
-        try:
-            await self._discover_devices()
-        except Exception as err:
-            _LOGGER.error("Error during MQTT discovery: %s", err)
-            errors["base"] = "discovery_failed"
-
-        if not self._discovered_devices:
-            errors["base"] = "no_devices_found"
-            # Offer manual configuration instead
-            return await self.async_step_manual()
-
-        # Show discovered devices
-        device_options = {
-            device_id: f"{data[CONF_DEVICE_NAME]} ({data.get(CONF_DEVICE_MAC, 'No MAC')})"
-            for device_id, data in self._discovered_devices.items()
-        }
-
-        data_schema = vol.Schema(
-            {
-                vol.Required("device"): vol.In(device_options),
-            }
-        )
-
-        return self.async_show_form(
-            step_id="mqtt_discovery",
-            data_schema=data_schema,
-            errors=errors,
-            description_placeholders={
-                "device_count": str(len(self._discovered_devices))
-            },
-        )
-
-    async def _discover_devices(self):
-        """Listen for QUBO device heartbeats on MQTT."""
-        discovery_complete = asyncio.Event()
+    async def _async_discover(self) -> None:
+        configured = self._async_current_ids(include_ignore=False)
+        self._discovered = {}
 
         @callback
-        def message_received(msg):
-            """Handle received MQTT message."""
-            try:
-                payload = json.loads(msg.payload)
-                devices_data = payload.get("devices", {})
+        def heartbeat(msg: mqtt.ReceiveMessage) -> None:
+            beat = protocol.parse_heartbeat(msg.payload)
+            if beat is not None and beat.device_uuid not in configured:
+                self._discovered[beat.device_uuid] = _entry_data(beat)
 
-                device_uuid = devices_data.get("deviceUUID")
-                if not device_uuid:
-                    return
+        unsubscribe = await mqtt.async_subscribe(
+            self.hass, protocol.monitor_topic("+", "+", protocol.SERVICE_HEARTBEAT), heartbeat)
+        try:
+            await asyncio.sleep(DISCOVERY_TIMEOUT)
+        finally:
+            unsubscribe()
+        _LOGGER.debug("Discovery found %d new device(s)", len(self._discovered))
 
-                # Extract device information from heartbeat
-                entity_uuid = devices_data.get("entityUUID")
-                unit_uuid = devices_data.get("unitUUID")
-                user_uuid = devices_data.get("userUUID")
-                src_device_id = devices_data.get("srcDeviceId", "")
+    async def async_step_pick_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose one of the discovered devices."""
+        # Reached from the progress step, HA passes on that step's input ({})
+        if user_input:
+            data = self._discovered[user_input["device"]]
+            await self.async_set_unique_id(data[CONF_DEVICE_UUID])
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=data[CONF_DEVICE_NAME], data=data)
 
-                # Parse device prefix and MAC address from srcDeviceId (format: HSP_CC:8D:A2:DC:F3:BC or HPH_94:51:DC:68:14:7C)
-                device_prefix = src_device_id.split("_", 1)[0] if "_" in src_device_id else ""
-                mac_address = src_device_id.split("_", 1)[1] if "_" in src_device_id else ""
-
-                # Determine device type based on prefix
-                if device_prefix == DEVICE_PREFIX_PURIFIER:
-                    device_type = DEVICE_TYPE_AIR_PURIFIER
-                    default_name = DEFAULT_NAME_PURIFIER
-                else:
-                    device_type = DEVICE_TYPE_SMART_PLUG
-                    default_name = DEFAULT_NAME
-
-                # Generate a friendly device name
-                mac_short = mac_address.replace(":", "")[-6:] if mac_address else device_uuid[:8]
-                device_name = f"{default_name} {mac_short}"
-
-                # Store discovered device
-                self._discovered_devices[device_uuid] = {
-                    CONF_DEVICE_UUID: device_uuid,
-                    CONF_ENTITY_UUID: entity_uuid,
-                    CONF_UNIT_UUID: unit_uuid,
-                    CONF_HANDLE_NAME: user_uuid,
-                    CONF_DEVICE_NAME: device_name,
-                    CONF_DEVICE_MAC: mac_address,
-                    CONF_DEVICE_TYPE: device_type,
-                }
-
-                _LOGGER.info("Discovered QUBO %s: %s (%s)", device_type, device_name, mac_address)
-
-            except (json.JSONDecodeError, KeyError) as err:
-                _LOGGER.debug("Error parsing MQTT message: %s", err)
-
-        # Subscribe to heartbeat topic
-        await mqtt.async_subscribe(
-            self.hass, "/monitor/+/+/heartbeat", message_received, qos=0
+        options = {
+            uuid: f"{data[CONF_DEVICE_NAME]} ({data[CONF_DEVICE_MAC]})"
+            for uuid, data in self._discovered.items()
+        }
+        return self.async_show_form(
+            step_id="pick_device",
+            data_schema=vol.Schema({vol.Required("device"): vol.In(options)}),
+            description_placeholders={"device_count": str(len(options))},
         )
 
-        # Wait for discovery timeout
-        try:
-            await asyncio.wait_for(discovery_complete.wait(), timeout=DISCOVERY_TIMEOUT)
-        except asyncio.TimeoutError:
-            pass  # Timeout is expected
-
-        _LOGGER.info("MQTT discovery completed. Found %d devices", len(self._discovered_devices))
-
-    async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle manual configuration."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            # Validate unique device UUID
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Enter a device's identifiers by hand."""
+        # Reached from the progress step, HA passes on that step's input ({})
+        if user_input:
             await self.async_set_unique_id(user_input[CONF_DEVICE_UUID])
             self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=user_input[CONF_DEVICE_NAME], data=user_input)
 
-            # Create the config entry
-            return self.async_create_entry(
-                title=user_input.get(CONF_DEVICE_NAME, DEFAULT_NAME),
-                data=user_input,
-            )
-
-        # Show the form
-        data_schema = vol.Schema(
-            {
+        errors, self._manual_errors = self._manual_errors, {}
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema({
                 vol.Required(CONF_DEVICE_UUID): cv.string,
                 vol.Required(CONF_ENTITY_UUID): cv.string,
                 vol.Required(CONF_UNIT_UUID): cv.string,
@@ -213,11 +140,6 @@ class QuboLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     DEVICE_TYPE_SMART_PLUG: "Smart Plug",
                     DEVICE_TYPE_AIR_PURIFIER: "Air Purifier",
                 }),
-            }
-        )
-
-        return self.async_show_form(
-            step_id="manual",
-            data_schema=data_schema,
+            }),
             errors=errors,
         )
